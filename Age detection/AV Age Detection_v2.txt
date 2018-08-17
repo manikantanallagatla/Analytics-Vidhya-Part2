@@ -1,0 +1,327 @@
+
+%matplotlib inline
+
+## Importing the required libraries
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from scipy.misc import *
+
+import os,sys
+from PIL import Image
+import cv2 #OpenCV library
+from tqdm import tqdm
+
+DATA_HOME_DIR = os.getcwd()
+%pwd
+
+train = pd.read_csv("train.csv")
+test = pd.read_csv("test.csv")
+
+train.head()
+
+train.describe()
+
+train.Class.value_counts()
+
+## setting path for images
+TRAIN_PATH = DATA_HOME_DIR + '/Train/'
+TEST_PATH = DATA_HOME_DIR + '/Test/'
+
+# function to read images as arrays
+def read_image(img_path, mode = 'color', resize = False, size = 32):
+    '''
+    Default mode is : color(BGR) --> color(RGB)
+    Other modes allowed are : 'grayscale' and 'include_opacity'
+    '''
+    if mode == 'grayscale':
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    elif mode == 'include_opacity':
+        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+    else:
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    if resize == True:
+        img = cv2.resize(img, (size, size))
+    
+    return img
+
+## Storing all images as list of arrays
+train_data = []
+test_data = []
+
+for img in tqdm(train['ID'].values):
+    train_data.append(read_image(TRAIN_PATH + '{}'.format(img), resize = True, size = 32))
+    
+for img in tqdm(test['ID'].values):
+    test_data.append(read_image(TEST_PATH + '{}'.format(img), resize = True, size = 32))
+
+y_train = train['Class'].values
+
+## Checking dimensions and aspect ratio of original images (without resizing)
+rows = [x.shape[0] for x in (train_data+test_data)]
+cols = [x.shape[1] for x in (train_data+test_data)]
+channels = [x.shape[2] for x in (train_data+test_data)]
+aspect_ratio = [x.shape[0]/x.shape[1] for x in (train_data+test_data)]
+
+## Checking range of the dimesnions and aspect ratio
+print("Min. and Max. rows = {} and {} respectively \nMin. and Max. cols = {} and {} respectively \nMin. and Max. channels = {} and {} respectively \nMin. and Max. aspect ratio = {} and {} respectively \n"
+      .format(min(rows), max(rows), min(cols), max(cols), min(channels), max(channels), min(aspect_ratio), max(aspect_ratio)))
+
+## Displaying random images without resizing
+i = np.random.choice(np.arange(len(train_data)))
+
+plt.title('{} - {} ; shape : {}'.format(train['ID'].values[i], y_train[i], train_data[i].shape))
+plt.imshow(train_data[i])
+
+## Scaling the images
+X_train = np.array(train_data, np.float32) / 255.
+X_test = np.array(test_data, np.float32) / 255.
+
+# Encoding image labels into target variables (categorical)
+from sklearn.preprocessing import LabelEncoder,OneHotEncoder
+le = LabelEncoder()
+y_train = le.fit_transform(y_train)
+
+ohe = OneHotEncoder(categorical_features = [0])
+y_train = ohe.fit_transform(y_train.reshape(-1,1)).toarray()
+
+y_train.shape
+
+# Importing the Keras libraries and packages
+import keras
+from keras.models import Sequential, Model
+from keras.layers import *
+from keras.layers.advanced_activations import PReLU, LeakyReLU, ELU
+from keras.optimizers import SGD
+from keras.constraints import maxnorm
+
+from keras import backend as K
+K.set_image_dim_ordering('tf')
+
+from keras.preprocessing import image
+
+os.environ['KERAS_BACKEND'] = 'theano'
+reload(K)
+
+model = Sequential([
+        BatchNormalization(input_shape = (32,32,3)),
+        Convolution2D(32,(3,3), activation='relu'),
+        BatchNormalization(),
+        Convolution2D(32,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Flatten(),
+        Dropout(0.3),
+        Dense(384, activation='relu'),
+        Dropout(0.6),
+        Dense(3, activation='softmax')
+        ])
+model.compile(optimizer = 'adam' , loss='categorical_crossentropy', metrics=['accuracy'])
+
+## Saving initial un-trained weights for future use
+model.save_weights('initial_weights.h5')
+
+model.summary()
+
+model = Sequential([
+        BatchNormalization(input_shape = (128,128,3)),
+        Convolution2D(32,(3,3), activation='relu'),
+        BatchNormalization(),
+        Convolution2D(32,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Convolution2D(64,(3,3), activation='relu'),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Flatten(),
+        Dropout(0.3),
+        Dense(512, activation='relu'),
+        Dropout(0.6),
+        Dense(3, activation='softmax')
+        ])
+model.compile(optimizer = 'adam' , loss='categorical_crossentropy', metrics=['accuracy'])
+
+## Saving initial un-trained weights for future use
+model.save_weights('initial_weights.h5')
+
+model = Sequential([
+        BatchNormalization(input_shape = (32,32,3)),
+        Convolution2D(32,(3,3), activation='relu'),
+        LeakyReLU(alpha = 0.3),
+        BatchNormalization(),
+        Convolution2D(32,(3,3), activation='relu'),
+        LeakyReLU(alpha = 0.3),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Convolution2D(64,(3,3), activation='relu'),
+        LeakyReLU(alpha = 0.3),
+        BatchNormalization(),
+        Convolution2D(64,(3,3), activation='relu'),
+        LeakyReLU(alpha = 0.3),
+        BatchNormalization(),
+        MaxPooling2D(),
+        Flatten(),
+        Dropout(0.3),
+        Dense(384, activation='relu'),
+        LeakyReLU(alpha = 0.3),
+        Dropout(0.6),
+        Dense(3, activation='softmax')
+        ])
+model.compile(optimizer = 'adam' , loss='categorical_crossentropy', metrics=['accuracy'])
+
+## Saving initial un-trained weights for future use
+model.save_weights('initial_weights.h5')
+
+model.summary()
+
+## Building a custom function for learning rate decay/annealing
+def lr_decay(start, stop, div_step_1, div_step_2 = 2) :
+    k = 1
+    while start >= stop:
+        yield start
+        if k==1 :
+            start/= div_step_1
+        else : start/= div_step_2
+        k = k * -1
+
+# Training the model
+model.fit(X_train, y_train, batch_size=32, epochs=50, validation_split=0.2)
+
+model.optimizer.lr /= 10
+
+## Saving weights as a form of model checkpointing
+model.save_weights('age-detection_weights.h5')
+
+from sklearn.cross_validation import train_test_split
+X_trn, X_valid, y_trn, y_valid = train_test_split(X_train, y_train, test_size = 0.2)
+
+gen = image.ImageDataGenerator(rotation_range=15, width_shift_range=0.1, shear_range=0.25,
+                               height_shift_range=0.1, zoom_range=0.2, horizontal_flip = True)
+batches = gen.flow(X_trn, y_trn, batch_size = 64)
+val_batches = gen.flow(X_valid, y_valid, batch_size = 128)
+
+model.optimizer.lr = 0.001
+
+model.fit_generator(batches, (X_trn.shape[0]//batches.batch_size), epochs=50,
+                    validation_data = val_batches, validation_steps = (X_valid.shape[0]//val_batches.batch_size))
+
+model.optimizer.lr /= 10
+
+model.fit_generator(batches, steps_per_epoch = (X_trn.shape[0]//batches.batch_size), epochs=50,
+                    validation_data = val_batches, validation_steps = (X_valid.shape[0]/val_batches.batch_size))
+
+for i in lr_decay(0.005, 0.0002, 2, 5):
+    model.optimizer.lr = i
+    print("Learning rate = " + str(i))
+    model.fit_generator(batches, (X_trn.shape[0]//batches.batch_size), epochs=50,
+                    validation_data = val_batches, validation_steps = (X_valid.shape[0]//val_batches.batch_size))
+
+## Saving weights as a form of model checkpointing
+model.save_weights('leakyReLU_age-detection_weights.h5')
+
+from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import RepeatedStratifiedKFold
+skf = StratifiedKFold(n_splits = 5, shuffle = True, random_state = 102)
+rskf = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=102)
+fold_num = 1
+
+for train_idx, val_idx in skf.split(X_train,np.zeros(shape=(X_train.shape[0], 1))):
+    print("Fitting fold %d" %fold_num)
+    
+    # Data augmentation image generator
+    gen = image.ImageDataGenerator(rotation_range=15, width_shift_range=0.1, shear_range=0.25,
+                               height_shift_range=0.1, zoom_range=0.2, horizontal_flip = True)
+    batches = gen.flow(X_train[train_idx], y_train[train_idx], batch_size = 32)
+    val_batches = gen.flow(X_train[val_idx], y_train[val_idx], batch_size = 64)
+    
+    # Fitting the model
+    model.fit_generator(batches, steps_per_epoch = (X_trn.shape[0]//batches.batch_size), epochs=50,
+                    validation_data = val_batches, validation_steps = (X_valid.shape[0]//val_batches.batch_size))
+    
+    # Recompiling the model with initial weights
+    model.load_weights('initial_weights.h5')
+    
+    fold_num += 1
+
+
+## Building the autoencoder pipeline
+
+input_img = Input(shape=(32, 32, 3))
+x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_img)
+x = MaxPooling2D((2, 2), padding='same')(x)
+x = Conv2D(16, (3, 3), activation='relu', padding='same')(x)
+x = MaxPooling2D((2, 2), padding='same')(x)
+x = Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+encoded = MaxPooling2D((2, 2), padding='same')(x)
+
+# at this point the representation is (8, 4, 4, 3) i.e. 384-dimensional
+
+x = Conv2D(8, (3, 3), activation='relu', padding='same')(encoded)
+x = UpSampling2D((2, 2))(x)
+x = Conv2D(16, (3, 3), activation='relu', padding='same')(x)
+x = UpSampling2D((2, 2))(x)
+x = Conv2D(32, (3, 3), activation='relu', padding = 'same')(x)
+x = UpSampling2D((2, 2))(x)
+decoded = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
+
+## Composing the autoencoder model and compiling it
+autoencoder = Model(input_img, decoded)
+autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy') # can change optimizer to 'adam'
+
+autoencoder.summary()
+
+# Use Tensorboard to visualize the training process
+# Run this in the terminal
+!tensorboard --logdir = /tmp/autoencoder
+
+from keras.callbacks import TensorBoard
+
+## Fitting the autoencoder model
+autoencoder.fit(X_train, X_train,
+                epochs= 50,
+                batch_size= 64,
+                shuffle= True,
+                validation_data= (X_test, X_test))
+                #callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
+
+autoencoder.fit(X_train, X_train,
+                epochs= 50,
+                batch_size= 128,
+                shuffle= True,
+                validation_data= (X_test, X_test))
+
+X_test.shape
+
+decoded_imgs = autoencoder.predict(X_test)
+
+predictions = model.predict(X_test)
+predictions = np.argmax(predictions, axis= 1)
+
+# Converting predicted category numbers to predicted labels
+unique_labels = np.unique(train['Class'].tolist())
+pred_labels = unique_labels[predictions]
+
+## Let's see what our classifier predicts on test images
+# Random predictions
+i = np.random.choice(np.arange(len(test_data)))
+plt.title('{} - Predicted class : {}'.format(test['ID'].values[i], pred_labels[i]))
+plt.imshow(test_data[i])
+
+# Prepare submission file
+subm = pd.DataFrame({'Class':pred_labels, 'ID':test.ID})
+subm.to_csv('sub03_2_leakyReLU.csv', index=False)
